@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام فك الضغط التلقائي</title>
+    <style>
+        /* نفس التصميم تماماً كما هو - لا تغيير */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; overflow: hidden; min-height: 100vh; position: relative; font-family: Arial, sans-serif; }
+        .sky { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle at 50% 50%, #000011 0%, #000033 100%); z-index: 1; }
+        .vortex { position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.1; mix-blend-mode: screen; }
+        .vortex-1 { width: 600px; height: 600px; top: -200px; left: -200px; background: radial-gradient(circle, #00ffff, transparent 70%); animation: vortexSpin 40s linear infinite; }
+        .vortex-2 { width: 500px; height: 500px; bottom: -150px; right: -150px; background: radial-gradient(circle, #ff00ff, transparent 70%); animation: vortexSpin 50s linear infinite reverse; }
+        @keyframes vortexSpin { 0% { transform: rotate(0deg) scale(1); } 100% { transform: rotate(360deg) scale(1); } }
+        .particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+        .particle { position: absolute; width: 2px; height: 2px; background: #ffffff; border-radius: 50%; animation: particleFloat linear infinite; }
+        @keyframes particleFloat { 0% { transform: translateY(100vh); opacity: 0; } 10% { opacity: 0.5; } 90% { opacity: 0.5; } 100% { transform: translateY(-100px); opacity: 0; } }
+        .core { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; background: #ffffff; border-radius: 50%; box-shadow: 0 0 30px #ffffff, 0 0 60px #00ffff; z-index: 10; animation: corePulse 1.5s ease-in-out infinite; }
+        @keyframes corePulse { 0%,100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 30px #ffffff, 0 0 60px #00ffff; } 50% { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 60px #ffffff, 0 0 120px #00ffff; } }
+        .files-orbit { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 500px; height: 500px; z-index: 8; }
+        .file-node { position: absolute; width: 25px; height: 25px; transform: translate(-50%, -50%); z-index: 9; }
+        .file-icon { width: 100%; height: 100%; background: radial-gradient(circle, #00aaff, #0088ff); border-radius: 50%; box-shadow: 0 0 10px #00aaff, 0 0 20px #0088ff; transition: all 0.3s; position: relative; }
+        .file-icon::after { content: ''; position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background: #ffffff; border-radius: 50%; transform: translate(-50%, -50%); }
+        .file-node.processing .file-icon { background: radial-gradient(circle, #ffff00, #ffaa00); box-shadow: 0 0 15px #ffff00, 0 0 30px #ffaa00; animation: processingSpin 1s linear infinite; }
+        .file-node.success .file-icon { background: radial-gradient(circle, #00ff00, #00aa00); box-shadow: 0 0 15px #00ff00, 0 0 30px #00aa00; }
+        .file-node.error .file-icon { background: radial-gradient(circle, #ff0000, #aa0000); box-shadow: 0 0 15px #ff0000, 0 0 30px #aa0000; }
+        @keyframes processingSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .connection-line { position: fixed; height: 1px; background: linear-gradient(90deg, transparent, #00ffff, transparent); transform-origin: 0 0; z-index: 6; opacity: 0.2; }
+        .energy-burst { position: fixed; width: 0; height: 0; border-radius: 50%; background: radial-gradient(circle, #00ffff, transparent 70%); transform: translate(-50%, -50%); animation: burstExpand 0.5s ease-out forwards; z-index: 20; }
+        @keyframes burstExpand { 0% { width: 0; height: 0; opacity: 1; } 100% { width: 200px; height: 200px; opacity: 0; } }
+        .progress-container { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 300px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; z-index: 10; }
+        .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #00ffff, #0088ff); transition: width 0.3s ease; }
+        @media (max-width: 768px) { .files-orbit { width: 300px; height: 300px; } .file-node { width: 20px; height: 20px; } .progress-container { width: 200px; } }
+    </style>
+</head>
+<body>
+    <!-- السماء والدوامات -->
+    <div class="sky"></div>
+    <div class="vortex vortex-1"></div>
+    <div class="vortex vortex-2"></div>
+    
+    <!-- الجسيمات -->
+    <div class="particles" id="particles"></div>
+    
+    <!-- النواة المركزية -->
+    <div class="core"></div>
+    
+    <!-- مدار الملفات -->
+    <div class="files-orbit" id="filesOrbit"></div>
+    
+    <!-- شريط التقدم -->
+    <div class="progress-container">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <!-- مكتبات ضرورية لفك الضغط -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <script>
+        // النظام الرئيسي - نسخة تفك الضغط وتستخرج الملفات
+        const system = {
+            active: true,
+            filesToProcess: 10, // من 1.zip إلى 10.zip
+            processedFiles: 0,
+            filesOrbit: document.getElementById('filesOrbit'),
+            progressBar: document.getElementById('progressBar'),
+            foundFiles: [],
+            extractedFiles: 0
+        };
+
+        // بدء النظام فور تحميل الصفحة
+        window.onload = function() {
+            initParticles();
+            createFileOrbit();
+            setTimeout(startFileDiscovery, 300);
+        };
+
+        // تهيئة الجسيمات
+        function initParticles() {
+            const particles = document.getElementById('particles');
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 3 + 's';
+                particle.style.animationDuration = (2 + Math.random() * 5) + 's';
+                particle.style.opacity = 0.3;
+                particles.appendChild(particle);
+            }
+        }
+
+        // إنشاء مدار الملفات
+        function createFileOrbit() {
+            const radius = 200;
+            for (let i = 1; i <= system.filesToProcess; i++) {
+                const angle = (i / system.filesToProcess) * Math.PI * 2;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+                
+                const fileNode = document.createElement('div');
+                fileNode.className = 'file-node';
+                fileNode.id = `fileNode${i}`;
+                fileNode.dataset.index = i;
+                fileNode.innerHTML = '<div class="file-icon"></div>';
+                
+                fileNode.style.left = `calc(50% + ${x}px)`;
+                fileNode.style.top = `calc(50% + ${y}px)`;
+                
+                system.filesOrbit.appendChild(fileNode);
+                animateNodeOrbit(fileNode, radius, 25, angle);
+            }
+        }
+
+        // تحريك العقد في المدار
+        function animateNodeOrbit(element, radius, speed, startAngle) {
+            let angle = startAngle;
+            function rotate() {
+                if (!system.active) return;
+                angle += speed * 0.001;
+                element.style.left = `calc(50% + ${Math.cos(angle) * radius}px)`;
+                element.style.top = `calc(50% + ${Math.sin(angle) * radius}px)`;
+                requestAnimationFrame(rotate);
+            }
+            rotate();
+        }
+
+        // بدء اكتشاف الملفات
+        async function startFileDiscovery() {
+            createEnergyBurst();
+            
+            // فحص كل الملفات بسرعة
+            const checkPromises = [];
+            for (let i = 1; i <= system.filesToProcess; i++) {
+                checkPromises.push(checkFileQuick(i));
+            }
+            
+            await Promise.all(checkPromises);
+            
+            // إذا وجدنا ملفات، نبدأ فك الضغط
+            if (system.foundFiles.length > 0) {
+                await startExtractionSequence();
+            }
+            
+            completeProcessing();
+        }
+
+        // فحص سريع للملف
+        async function checkFileQuick(fileNumber) {
+            const fileName = `${fileNumber}.zip`;
+            const fileNode = document.getElementById(`fileNode${fileNumber}`);
+            
+            // وضع حالة المعالجة
+            if (fileNode) fileNode.classList.add('processing');
+            
+            try {
+                // طريقة بسيطة للتحقق من وجود الملف
+                const exists = await testFileExistence(fileName);
+                
+                if (exists) {
+                    system.foundFiles.push({number: fileNumber, name: fileName});
+                    if (fileNode) {
+                        fileNode.classList.remove('processing');
+                        fileNode.classList.add('success');
+                        createEnergyBurstAtNode(fileNumber);
+                    }
+                } else {
+                    if (fileNode) {
+                        fileNode.classList.remove('processing');
+                        fileNode.classList.add('error');
+                    }
+                }
+            } catch (e) {
+                if (fileNode) {
+                    fileNode.classList.remove('processing');
+                    fileNode.classList.add('error');
+                }
+            }
+            
+            // تحديث التقدم
+            system.processedFiles++;
+            updateProgress();
+        }
+
+        // اختبار وجود الملف بطريقة بسيطة
+        function testFileExistence(url) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = function() { resolve(true); };
+                img.onerror = function() { 
+                    // تجربة طريقة أخرى
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('HEAD', url, true);
+                    xhr.onreadystatechange = function() {
+                        if (xhr.readyState === 4) {
+                            resolve(xhr.status === 200);
+                        }
+                    };
+                    xhr.onerror = function() { resolve(false); };
+                    xhr.send();
+                };
+                img.src = url + '?' + Date.now();
+            });
+        }
+
+        // بدء تسلسل فك الضغط
+        async function startExtractionSequence() {
+            // فك ضغط كل الملفات
+            for (const file of system.foundFiles) {
+                await extractAndSaveFile(file.name, file.number);
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+
+        // فك ضغط وحفظ الملف
+        async function extractAndSaveFile(fileName, fileNumber) {
+            const fileNode = document.getElementById(`fileNode${fileNumber}`);
+            
+            try {
+                // تحميل ملف ZIP
+                const response = await fetch(fileName);
+                if (!response.ok) {
+                    throw new Error(`فشل تحميل الملف: ${fileName}`);
+                }
+                
+                const zipBlob = await response.blob();
+                
+                // فك الضغط باستخدام JSZip
+                const zip = new JSZip();
+                const zipContent = await zip.loadAsync(zipBlob);
+                
+                // الحصول على جميع الملفات داخل الأرشيف
+                const fileNames = Object.keys(zipContent.files);
+                
+                if (fileNames.length === 0) {
+                    console.warn(`الأرشيف ${fileName} فارغ`);
+                    return;
+                }
+                
+                // استخراج كل ملف
+                for (const internalFileName of fileNames) {
+                    const zipEntry = zipContent.files[internalFileName];
+                    
+                    // تجاهل المجلدات
+                    if (!zipEntry.dir) {
+                        // استخراج محتوى الملف
+                        const fileData = await zipEntry.async('blob');
+                        
+                        // إنشاء اسم للملف المستخرج
+                        const cleanName = internalFileName.split('/').pop(); // إزالة المسارات
+                        const extractedFileName = `مستخرج_${fileNumber}_${cleanName}`;
+                        
+                        // حفظ الملف المستخرج
+                        saveAs(fileData, extractedFileName);
+                        
+                        // زيادة عدد الملفات المستخرجة
+                        system.extractedFiles++;
+                        
+                        // تأثير بسيط للإشارة إلى الاستخراج
+                        createSmallBurstAtNode(fileNumber);
+                        
+                        // تأخير قصير بين الملفات
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                }
+                
+                // تحديث واجهة المستخدم للإشارة إلى نجاح الاستخراج
+                if (fileNode) {
+                    fileNode.classList.add('success');
+                    // تأثير خاص للنجاح
+                    createEnergyBurstAtNode(fileNumber);
+                }
+                
+            } catch (error) {
+                console.error(`خطأ في فك ضغط ${fileName}:`, error);
+                if (fileNode) {
+                    fileNode.classList.remove('processing');
+                    fileNode.classList.add('error');
+                }
+            }
+        }
+
+        // إنشاء انفجار طاقة في المركز
+        function createEnergyBurst() {
+            const burst = document.createElement('div');
+            burst.className = 'energy-burst';
+            burst.style.left = '50%';
+            burst.style.top = '50%';
+            document.body.appendChild(burst);
+            setTimeout(() => burst.remove(), 500);
+        }
+
+        // إنشاء انفجار عند عقدة الملف
+        function createEnergyBurstAtNode(fileNumber) {
+            const fileNode = document.getElementById(`fileNode${fileNumber}`);
+            if (!fileNode) return;
+            const rect = fileNode.getBoundingClientRect();
+            const burst = document.createElement('div');
+            burst.className = 'energy-burst';
+            burst.style.left = rect.left + 12 + 'px';
+            burst.style.top = rect.top + 12 + 'px';
+            document.body.appendChild(burst);
+            setTimeout(() => burst.remove(), 300);
+        }
+
+        // إنشاء انفجار صغير
+        function createSmallBurstAtNode(fileNumber) {
+            const fileNode = document.getElementById(`fileNode${fileNumber}`);
+            if (!fileNode) return;
+            const rect = fileNode.getBoundingClientRect();
+            const burst = document.createElement('div');
+            burst.className = 'energy-burst';
+            burst.style.left = rect.left + 12 + 'px';
+            burst.style.top = rect.top + 12 + 'px';
+            burst.style.width = '100px';
+            burst.style.height = '100px';
+            document.body.appendChild(burst);
+            setTimeout(() => burst.remove(), 200);
+        }
+
+        // تحديث شريط التقدم
+        function updateProgress() {
+            const progress = (system.processedFiles / system.filesToProcess) * 100;
+            system.progressBar.style.width = progress + '%';
+            
+            // تغيير اللون مع التقدم
+            if (progress > 50) {
+                system.progressBar.style.background = 'linear-gradient(90deg, #00ff00, #008800)';
+            }
+        }
+
+        // إكمال المعالجة
+        function completeProcessing() {
+            system.active = false;
+            
+            setTimeout(() => {
+                createEnergyBurst();
+                
+                // تأثير نهائي
+                const core = document.querySelector('.core');
+                if (system.foundFiles.length > 0) {
+                    core.style.background = '#00ff00';
+                    core.style.boxShadow = '0 0 100px #00ff00, 0 0 200px #00ff00';
+                } else {
+                    core.style.background = '#ff0000';
+                    core.style.boxShadow = '0 0 100px #ff0000, 0 0 200px #ff0000';
+                }
+                
+                // شريط التقدم كامل
+                system.progressBar.style.height = '8px';
+                if (system.foundFiles.length > 0) {
+                    system.progressBar.style.background = 'linear-gradient(90deg, #00ff00, #00aa00)';
+                } else {
+                    system.progressBar.style.background = 'linear-gradient(90deg, #ff0000, #aa0000)';
+                }
+                
+            }, 300);
+        }
+    </script>
+</body>
+</html>
